@@ -2,7 +2,7 @@
 
 use kvm_ioctls::Kvm;
 use kvm_bindings::*;
-use tdx::launch::TdxVm;
+use tdx::launch::{TdxVm, TdxVcpu};
 
 #[test]
 fn launch() {
@@ -20,5 +20,6 @@ fn launch() {
     cap.cap = KVM_CAP_SPLIT_IRQCHIP;
     cap.args[0] = 24;
     tdx_vm.fd.enable_cap(&cap).unwrap();
-    let _vcpu = tdx_vm.fd.create_vcpu(0).unwrap();
+    let vcpu = TdxVcpu::new(&tdx_vm, 0).unwrap();
+    vcpu.init_vcpu(0).unwrap();
 }

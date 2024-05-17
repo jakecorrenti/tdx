@@ -7,6 +7,10 @@ use linux::{Capabilities, Cmd, CpuidConfig, InitVm, TdxError};
 use bitflags::bitflags;
 use kvm_ioctls::{Kvm, VmFd};
 use std::arch::x86_64;
+use vmm_sys_util::*;
+use kvm_bindings::*;
+
+vmm_sys_util::ioctl_iowr_nr!(KVM_MEMORY_ENCRYPT_OP, KVMIO, 0xba, std::os::raw::c_ulong);
 
 // Defined in linux/arch/x86/include/uapi/asm/kvm.h
 const KVM_X86_TDX_VM: u64 = 2;
@@ -248,4 +252,31 @@ pub struct TdxCapabilities {
     pub supported_gpaw: u32,
 
     pub cpuid_configs: Vec<CpuidConfig>,
+}
+
+pub struct TdxVcpu {
+    pub fd: kvm_ioctls::VcpuFd,
+}
+
+impl TdxVcpu {
+    pub fn new(vm: &TdxVm, id: u64) -> Result<TdxVcpu, TdxError> {
+        let vcpufd = vm.fd.create_vcpu(id)?;
+        Ok(Self { fd: vcpufd })
+    }
+
+    pub fn init_vcpu(&self, hob_addr: u64) -> Result<(), TdxError> {
+        let mut cmd = Cmd {
+            id: linux::CmdId::InitVcpu as u32,
+            flags: 0,
+            data: hob_addr as *const u64 as _,
+            error: 0,
+            _unused: 0,
+        };
+        let ret = unsafe { ioctl::ioctl_with_mut_ptr(&self.fd, KVM_MEMORY_ENCRYPT_OP(), &mut cmd) };
+        if ret < 0 {
+            return Err(TdxError::from(ret));
+        }
+
+        Ok(())
+    }
 }
