@@ -2,6 +2,7 @@
 
 use kvm_ioctls::Kvm;
 
+use tdx::launch::TdxVcpu;
 use tdx::launch::TdxVm;
 use tdx::tdvf::*;
 
@@ -15,4 +16,6 @@ fn launch() {
     let mut fs = std::fs::File::open("/usr/share/edk2/ovmf/OVMF.inteltdx.fd").unwrap();
     let (sections, _guid_found) = parse_sections(&mut fs).unwrap();
     let hob_section = get_hob_section(&sections).unwrap();
+    let vcpu = TdxVcpu::new(&tdx_vm, 0).unwrap();
+    vcpu.init_vcpu(hob_section.address).unwrap();
 }
