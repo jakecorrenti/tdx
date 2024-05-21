@@ -96,7 +96,6 @@ fn calculate_tdx_metadata_guid_offset(table: &mut Vec<u8>, table_size: usize) ->
         // move backwards through the table to locate the entry size
         let entry_size =
             u16::from_le_bytes(table[offset - 18..offset - 16].try_into().unwrap()) as usize;
-        println!("entry uuid: {}, entry size: {}", entry_uuid, entry_size);
 
         // Avoid going through an infinite loop if the entry size is 0
         if entry_size == 0 {
@@ -193,3 +192,14 @@ pub fn parse_sections(fd: &mut std::fs::File) -> Result<(Vec<TdvfSection>, bool)
     Ok((sections, found_guid))
 }
 
+pub fn get_hob_section<'a>(sections: &'a Vec<TdvfSection>) -> Option<&'a TdvfSection> {
+    for section in sections {
+        match section.section_type {
+            TdvfSectionType::TdHob => {
+                return Some(&section);
+            }
+            _ => continue,
+        }
+    }
+    None
+}
