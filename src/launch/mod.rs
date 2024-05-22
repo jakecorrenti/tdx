@@ -63,6 +63,7 @@ impl TdxVm {
         let cpuid = kvm_fd
             .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
             .unwrap();
+
         let mut cpuid_entries: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
 
         // resize to 256 entries to make sure that InitVm is 8KB

@@ -55,6 +55,10 @@ impl From<i32> for TdxError {
                 code: 25,
                 message: String::from("Inappropriate ioctl for device. Ensure the proper VM type is being used for the ioctl"),
             },
+            22 => TdxError {
+                code: 22,
+                message: String::from("Invalid Argument. Check your input to the ioctl."),
+            },
             _ => TdxError {
                 code: errno,
                 message: format!("errno: {}", errno),
