@@ -152,10 +152,59 @@ fn create_guest_memfd(vmfd: &kvm_ioctls::VmFd, section: &tdvf::TdvfSection) -> i
     linux_ioctls::create_guest_memfd(&vmfd, &gmem)
 }
 
+#[repr(C)]
+#[derive(Debug)]
+struct KvmUserspaceMemoryRegion2 {
+    slot: u32,
+    flags: u32,
+    guest_phys_addr: u64,
+    memory_size: u64,
+    userspace_addr: u64,
+    guest_memfd_offset: u64,
+    guest_memfd: u32,
+    pad1: u32,
+    pad2: [u64; 14],
+}
+
+ioctl_iow_nr!(
+    KVM_SET_USER_MEMORY_REGION2,
+    kvm_bindings::KVMIO,
+    0x49,
+    KvmUserspaceMemoryRegion2
+);
+
+fn set_user_memory_region2(
+    vmfd: &kvm_ioctls::VmFd,
+    slot: u32,
+    userspace_address: u64,
+    section: &tdvf::TdvfSection,
+) {
+    const KVM_MEM_GUEST_MEMFD: u32 = 1 << 2;
+    let mem_region = KvmUserspaceMemoryRegion2 {
+        slot,
+        flags: KVM_MEM_GUEST_MEMFD,
+        guest_phys_addr: section.memory_address,
+        memory_size: section.memory_data_size,
+        userspace_addr: userspace_address,
+        guest_memfd_offset: 0,
+        guest_memfd: create_guest_memfd(vmfd, section) as u32,
+        pad1: 0,
+        pad2: [0; 14],
+    };
+    linux_ioctls::set_user_memory_region2(vmfd, &mem_region)
+}
+
 mod linux_ioctls {
     use super::*;
 
     pub fn create_guest_memfd(fd: &kvm_ioctls::VmFd, gmem: &KvmCreateGuestMemfd) -> i32 {
         unsafe { ioctl::ioctl_with_ref(fd, KVM_CREATE_GUEST_MEMFD(), gmem) }
+    }
+
+    pub fn set_user_memory_region2(fd: &kvm_ioctls::VmFd, mem_region: &KvmUserspaceMemoryRegion2) {
+        let ret = unsafe { ioctl::ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION2(), mem_region) };
+        if ret != 0 {
+            panic!("Error: set_user_memory_region2: {}", errno::Error::last())
+        }
     }
 }
