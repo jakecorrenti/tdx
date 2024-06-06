@@ -2,6 +2,8 @@
 
 mod linux;
 
+use crate::tdvf::TdvfSection;
+
 use kvm_bindings::{kvm_enable_cap, KVM_CAP_MAX_VCPUS, KVM_CAP_SPLIT_IRQCHIP};
 use linux::{Capabilities, Cmd, CpuidConfig, InitVm, TdxError};
 
@@ -110,6 +112,31 @@ impl TdxVm {
         }
 
         let mut cmd = Cmd::from(&InitVm::new(&cpuid_entries));
+        unsafe {
+            self.fd.encrypt_op(&mut cmd)?;
+        }
+
+        Ok(())
+    }
+
+    /// Encrypt a memory continuous region
+    pub fn init_mem_region(&self, section: &TdvfSection, source_addr: u64) -> Result<(), TdxError> {
+        const TDVF_SECTION_ATTRIBUTES_MR_EXTEND: u32 = 1u32 << 0;
+        let mem_region = linux::TdxInitMemRegion {
+            source_addr,
+            gpa: section.memory_address,
+            nr_pages: section.memory_data_size / 4096,
+        };
+
+        let mut cmd = Cmd::from(&mem_region);
+
+        // determines if we also extend the measurement
+        cmd.flags = if section.attributes & TDVF_SECTION_ATTRIBUTES_MR_EXTEND > 0 {
+            1
+        } else {
+            0
+        };
+
         unsafe {
             self.fd.encrypt_op(&mut cmd)?;
         }
