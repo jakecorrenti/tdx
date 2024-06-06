@@ -8,9 +8,11 @@ use tdx::tdvf;
 
 #[test]
 fn launch() {
-    let kvm_fd = Kvm::new().unwrap();
+    const KVM_CAP_GUEST_MEMFD: u32 = 234;
+    const KVM_CAP_MEMORY_MAPPING: u32 = 236;
 
     // create vm
+    let kvm_fd = Kvm::new().unwrap();
     let tdx_vm = TdxVm::new(&kvm_fd, 100).unwrap();
     let caps = tdx_vm.get_capabilities().unwrap();
     let _ = tdx_vm.init_vm(&kvm_fd, &caps).unwrap();
@@ -22,6 +24,24 @@ fn launch() {
     let sections = tdvf::parse_sections(&mut firmware).unwrap();
     let hob_section = tdvf::get_hob_section(&sections).unwrap();
     tdx_vcpu.init(hob_section.memory_address).unwrap();
+
+    // map memory to guest
+    if !check_extension(KVM_CAP_GUEST_MEMFD) {
+        panic!("KVM_CAP_GUEST_MEMFD isn't supported, which is required by TDX");
+    }
+
+    for (slot, section) in sections.iter().enumerate() {
+        let userspace_address = ram_mmap(section.memory_data_size);
+        set_user_memory_region2(&tdx_vm.fd, slot as u32, userspace_address, &section);
+        set_memory_attributes(&tdx_vm.fd, &section);
+
+        if check_extension(KVM_CAP_MEMORY_MAPPING) {
+            // TODO(jakecorrenti): the current CentOS SIG doesn't support the KVM_MEMORY_MAPPING or
+            // KVM_TDX_EXTEND_MEMORY ioctls, which is what we would typically use here.
+        } else {
+            tdx_vm.init_mem_region(&section, userspace_address).unwrap();
+        }
+    }
 }
 
 /// Round number down to multiple
