@@ -194,6 +194,33 @@ fn set_user_memory_region2(
     linux_ioctls::set_user_memory_region2(vmfd, &mem_region)
 }
 
+#[repr(C)]
+#[derive(Debug)]
+struct KvmMemoryAttributes {
+    address: u64,
+    size: u64,
+    attributes: u64,
+    flags: u64,
+}
+
+ioctl_iow_nr!(
+    KVM_SET_MEMORY_ATTRIBUTES,
+    kvm_bindings::KVMIO,
+    0xd2,
+    KvmMemoryAttributes
+);
+
+fn set_memory_attributes(vmfd: &kvm_ioctls::VmFd, section: &tdvf::TdvfSection) {
+    const KVM_MEMORY_ATTRIBUTE_PRIVATE: u64 = 1 << 3;
+    let attr = KvmMemoryAttributes {
+        address: section.memory_address,
+        size: section.memory_data_size,
+        attributes: KVM_MEMORY_ATTRIBUTE_PRIVATE,
+        flags: 0,
+    };
+    linux_ioctls::set_memory_attributes(vmfd, &attr)
+}
+
 mod linux_ioctls {
     use super::*;
 
@@ -205,6 +232,13 @@ mod linux_ioctls {
         let ret = unsafe { ioctl::ioctl_with_ref(fd, KVM_SET_USER_MEMORY_REGION2(), mem_region) };
         if ret != 0 {
             panic!("Error: set_user_memory_region2: {}", errno::Error::last())
+        }
+    }
+
+    pub fn set_memory_attributes(fd: &kvm_ioctls::VmFd, attr: &KvmMemoryAttributes) {
+        let ret = unsafe { ioctl::ioctl_with_ref(fd, KVM_SET_MEMORY_ATTRIBUTES(), attr) };
+        if ret != 0 {
+            panic!("Error: set_memory_attributes: {}", errno::Error::last())
         }
     }
 }
