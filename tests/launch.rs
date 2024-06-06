@@ -42,6 +42,9 @@ fn launch() {
             tdx_vm.init_mem_region(&section, userspace_address).unwrap();
         }
     }
+
+    // finalize measurement
+    tdx_vm.finalize().unwrap();
 }
 
 /// Round number down to multiple
