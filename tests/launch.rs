@@ -125,3 +125,37 @@ fn check_extension(i: u32) -> bool {
     let kvm = Kvm::new().unwrap();
     (unsafe { ioctl::ioctl_with_val(&kvm, KVM_CHECK_EXTENSION(), i.into()) }) > 0
 }
+
+// FIXME: All of the following code is not currently upstream at rust-vmm/kvm-ioctls. Therefore, we need to implement it ourselves.
+// The work is currently ongoing as of 06/06/2024 and can be found at this link: https://github.com/rust-vmm/kvm-ioctls/pull/264
+#[repr(C)]
+#[derive(Debug)]
+struct KvmCreateGuestMemfd {
+    size: u64,
+    flags: u64,
+    reserved: [u64; 6],
+}
+
+ioctl_iowr_nr!(
+    KVM_CREATE_GUEST_MEMFD,
+    kvm_bindings::KVMIO,
+    0xd4,
+    KvmCreateGuestMemfd
+);
+
+fn create_guest_memfd(vmfd: &kvm_ioctls::VmFd, section: &tdvf::TdvfSection) -> i32 {
+    let gmem = KvmCreateGuestMemfd {
+        size: section.memory_data_size,
+        flags: 0,
+        reserved: [0; 6],
+    };
+    linux_ioctls::create_guest_memfd(&vmfd, &gmem)
+}
+
+mod linux_ioctls {
+    use super::*;
+
+    pub fn create_guest_memfd(fd: &kvm_ioctls::VmFd, gmem: &KvmCreateGuestMemfd) -> i32 {
+        unsafe { ioctl::ioctl_with_ref(fd, KVM_CREATE_GUEST_MEMFD(), gmem) }
+    }
+}
