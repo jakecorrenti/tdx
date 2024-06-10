@@ -6,16 +6,58 @@ use vmm_sys_util::*;
 use tdx::launch::{TdxVcpu, TdxVm};
 use tdx::tdvf;
 
+// one page of `hlt`
+const CODE: &[u8; 4096] = &[
+    0xf4; 4096 // hlt
+];
+
 #[test]
 fn launch() {
     const KVM_CAP_GUEST_MEMFD: u32 = 234;
     const KVM_CAP_MEMORY_MAPPING: u32 = 236;
+    const CODE_MEM_ADDRESS: usize = 0x1000;
 
     // create vm
     let kvm_fd = Kvm::new().unwrap();
     let tdx_vm = TdxVm::new(&kvm_fd, 100).unwrap();
     let caps = tdx_vm.get_capabilities().unwrap();
     let _ = tdx_vm.init_vm(&kvm_fd, &caps).unwrap();
+
+    let code_addr = mmap_reserve(CODE.len(), -1);
+    if code_addr == libc::MAP_FAILED {
+        panic!("mmap reserve failed");
+    }
+
+    let code_addr = mmap_activate(code_addr, CODE.len(), -1, 0, 0);
+    if code_addr == libc::MAP_FAILED {
+        panic!("mmap activate failed");
+    }
+    let code_addr_space: &mut [u8] = unsafe { std::slice::from_raw_parts_mut(code_addr as *mut u8, CODE.len()) };
+    code_addr_space[..CODE.len()].copy_from_slice(&CODE[..]);
+    let userspace_addr = code_addr_space as *const [u8] as *const u8 as u64;
+
+    let code_gmem = KvmCreateGuestMemfd {
+        size: CODE.len() as u64,
+        flags: 0,
+        reserved: [0; 6],
+    };
+    let code_gmem = linux_ioctls::create_guest_memfd(&tdx_vm.fd, &code_gmem);
+    if code_gmem < 0 {
+        panic!("create guest memfd for code failed");
+    }
+
+    let code_mem_region = KvmUserspaceMemoryRegion2 {
+        slot: 22,
+        flags: 1u32 << 2, 
+        guest_phys_addr: CODE_MEM_ADDRESS as u64,
+        memory_size: CODE.len() as u64,
+        userspace_addr,
+        guest_memfd_offset: 0,
+        guest_memfd: code_gmem as u32,
+        pad1: 0,
+        pad2: [0; 14],
+    };
+    linux_ioctls::set_user_memory_region2(&tdx_vm.fd, &code_mem_region);
 
     // create vcpu
     let mut vcpufd = tdx_vm.fd.create_vcpu(10).unwrap();
@@ -45,6 +87,19 @@ fn launch() {
 
     // finalize measurement
     tdx_vm.finalize().unwrap();
+
+    let mut regs = tdx_vcpu.fd.get_regs().unwrap();
+    regs.rip = CODE_MEM_ADDRESS as u64;
+    regs.rflags = 2;
+    tdx_vcpu.fd.set_regs(&regs).unwrap();
+
+    let mut sregs = tdx_vcpu.fd.get_sregs().unwrap();
+    sregs.cs.base = 0;
+    sregs.cs.selector = 0;
+    tdx_vcpu.fd.set_sregs(&sregs).unwrap();
+    let ret = tdx_vcpu.fd.run();
+
+    assert!(matches!(ret, Ok(kvm_ioctls::VcpuExit::Hlt)));
 }
 
 /// Round number down to multiple
