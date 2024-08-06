@@ -3,7 +3,7 @@
 mod linux;
 
 use kvm_bindings::{kvm_enable_cap, KVM_CAP_MAX_VCPUS, KVM_CAP_SPLIT_IRQCHIP};
-use linux::{Capabilities, Cmd, CpuidConfig, InitVm, TdxError};
+use linux::{Capabilities, Cmd, CmdId, CpuidConfig, InitVm, TdxError};
 
 use bitflags::bitflags;
 use kvm_ioctls::{Kvm, VmFd};
@@ -141,6 +141,19 @@ impl TdxVm {
             0
         };
 
+        unsafe {
+            self.fd.encrypt_op(&mut cmd)?;
+        }
+
+        Ok(())
+    }
+
+    /// Complete measurement of the initial TD contents and mark it ready to run
+    pub fn finalize(&self) -> Result<(), TdxError> {
+        let mut cmd = Cmd {
+            id: CmdId::FinalizeVm as u32,
+            ..Default::default()
+        };
         unsafe {
             self.fd.encrypt_op(&mut cmd)?;
         }
