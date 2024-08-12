@@ -21,7 +21,7 @@ fn launch() {
     // create vm
     let mut kvm_fd = Kvm::new().unwrap();
     let tdx_vm = TdxVm::new(&kvm_fd, 100).unwrap();
-    let caps = tdx_vm.get_capabilities().unwrap();
+    let _caps = tdx_vm.get_capabilities().unwrap();
     let _ = tdx_vm.init_vm(&kvm_fd).unwrap();
 
     // get tdvf sections
