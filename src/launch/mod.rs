@@ -9,18 +9,16 @@ use bitflags::bitflags;
 use kvm_ioctls::{Kvm, VmFd};
 
 // Defined in linux/arch/x86/include/uapi/asm/kvm.h
-const KVM_X86_TDX_VM: u64 = 2;
+pub const KVM_X86_TDX_VM: u64 = 2;
 
 /// Handle to the TDX VM file descriptor
-pub struct TdxVm {
-    pub fd: VmFd,
+pub struct TdxVm<'a> {
+    fd: &'a VmFd,
 }
 
-impl TdxVm {
+impl<'a> TdxVm<'a> {
     /// Create a new TDX VM with KVM
-    pub fn new(kvm_fd: &Kvm, max_vcpus: u64) -> Result<Self, TdxError> {
-        let vm_fd = kvm_fd.create_vm_with_type(KVM_X86_TDX_VM)?;
-
+    pub fn new(vm_fd: &'a VmFd, max_vcpus: u64) -> Result<Self, TdxError> {
         // TDX requires that MAX_VCPUS and SPLIT_IRQCHIP be set
         let mut cap: kvm_enable_cap = kvm_enable_cap {
             cap: KVM_CAP_MAX_VCPUS,
@@ -64,10 +62,7 @@ impl TdxVm {
     }
 
     /// Do additional VM initialization that is specific to Intel TDX
-    pub fn init_vm(&self, kvm_fd: &Kvm) -> Result<(), TdxError> {
-        let cpuid = kvm_fd
-            .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
-            .unwrap();
+    pub fn init_vm(&self, cpuid: kvm_bindings::CpuId) -> Result<kvm_bindings::CpuId, TdxError> {
         let mut cpuid_entries: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
 
         // resize to 256 entries to make sure that InitVm is 8KB
@@ -96,7 +91,7 @@ impl TdxVm {
             self.fd.encrypt_op(&mut cmd)?;
         }
 
-        Ok(())
+        Ok(cpuid)
     }
 
     /// Encrypt a memory continuous region

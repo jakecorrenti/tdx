@@ -20,9 +20,13 @@ fn launch() {
 
     // create vm
     let mut kvm_fd = Kvm::new().unwrap();
-    let tdx_vm = TdxVm::new(&kvm_fd, 100).unwrap();
+    let vm_fd = kvm_fd.create_vm_with_type(tdx::launch::KVM_X86_TDX_VM).unwrap();
+    let tdx_vm = TdxVm::new(&vm_fd, 100).unwrap();
     let _caps = tdx_vm.get_capabilities().unwrap();
-    let _ = tdx_vm.init_vm(&kvm_fd).unwrap();
+    let cpuid = kvm_fd
+        .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
+        .unwrap();
+    let _ = tdx_vm.init_vm(cpuid).unwrap();
 
     // get tdvf sections
     let mut firmware = std::fs::File::open("/usr/share/edk2/ovmf/OVMF.inteltdx.fd").unwrap();
@@ -30,7 +34,7 @@ fn launch() {
     let hob_section = tdvf::get_hob_section(&sections).unwrap();
 
     // create vcpu
-    let mut vcpufd = tdx_vm.fd.create_vcpu(10).unwrap();
+    let mut vcpufd = vm_fd.create_vcpu(10).unwrap();
     let tdx_vcpu = TdxVcpu::try_from((&mut vcpufd, &mut kvm_fd)).unwrap();
     tdx_vcpu.init(hob_section.memory_address).unwrap();
 
@@ -69,7 +73,7 @@ fn launch() {
         reserved: [0; 6],
     };
 
-    let gmem = tdx_vm.fd.create_guest_memfd(gmem).unwrap();
+    let gmem = vm_fd.create_guest_memfd(gmem).unwrap();
     let region = kvm_bindings::kvm_userspace_memory_region2 {
         slot: 0 as u32,
         // KVM_MEM_GUEST_MEMFD
@@ -83,7 +87,7 @@ fn launch() {
         pad2: [0; 14],
     };
     unsafe {
-        tdx_vm.fd.set_user_memory_region2(region).unwrap();
+        vm_fd.set_user_memory_region2(region).unwrap();
     }
 
     let attr = kvm_bindings::kvm_memory_attributes {
@@ -93,7 +97,7 @@ fn launch() {
         attributes: 1 << 3,
         flags: 0,
     };
-    tdx_vm.fd.set_memory_attributes(attr).unwrap();
+    vm_fd.set_memory_attributes(attr).unwrap();
 
     if check_extension(KVM_CAP_MEMORY_MAPPING) {
         // TODO(jakecorrenti): the current CentOS SIG doesn't support the KVM_MEMORY_MAPPING or
