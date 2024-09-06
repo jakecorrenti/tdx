@@ -14,11 +14,13 @@ rust-version = "1.71"
 
 [dependencies]
 bitflags = "2.4.2"
-kvm-bindings = { git= "https://www.github.com/rust-vmm/kvm-bindings.git", branch = "main"}
-kvm-ioctls = { git= "https://www.github.com/rust-vmm/kvm-ioctls.git", branch = "main"}
+kvm-bindings = "0.9.1"
+kvm-ioctls = "0.18.0"
+# kvm-bindings = { git= "https://www.github.com/rust-vmm/kvm-bindings.git", branch = "main"}
+# kvm-ioctls = { git= "https://www.github.com/rust-vmm/kvm-ioctls.git", branch = "main"}
 libc = "0.2.155"
 uuid = "1.8.0"
 vmm-sys-util = "0.12.1"
 
-[patch.crates-io]
-kvm-bindings = { git = "https://www.github.com/rust-vmm/kvm-bindings.git", branch = "main"}
+# [patch.crates-io]
+# kvm-bindings = { git = "https://www.github.com/rust-vmm/kvm-bindings.git", branch = "main"}
