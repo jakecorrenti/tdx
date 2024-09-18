@@ -22,11 +22,11 @@ fn launch() {
     let mut kvm_fd = Kvm::new().unwrap();
     let vm_fd = kvm_fd.create_vm_with_type(tdx::launch::KVM_X86_TDX_VM).unwrap();
     let tdx_vm = TdxVm::new(&vm_fd, 100).unwrap();
-    let _caps = tdx_vm.get_capabilities().unwrap();
+    let _caps = tdx_vm.get_capabilities(&vm_fd).unwrap();
     let cpuid = kvm_fd
         .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
         .unwrap();
-    let _ = tdx_vm.init_vm(cpuid).unwrap();
+    let _ = tdx_vm.init_vm(&vm_fd, cpuid).unwrap();
 
     // get tdvf sections
     let mut firmware = std::fs::File::open("/usr/share/edk2/ovmf/OVMF.inteltdx.fd").unwrap();
@@ -104,12 +104,12 @@ fn launch() {
         // KVM_TDX_EXTEND_MEMORY ioctls, which is what we would typically use here.
     } else {
         tdx_vm
-            .init_mem_region(guest_addr, 1, 1, firmware_userspace)
+            .init_mem_region(&vm_fd, guest_addr, 1, 1, firmware_userspace)
             .unwrap();
     }
 
     // finalize measurement
-    tdx_vm.finalize().unwrap();
+    tdx_vm.finalize(&vm_fd).unwrap();
 
     // run the vCPU
 
