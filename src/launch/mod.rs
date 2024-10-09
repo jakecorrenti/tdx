@@ -84,7 +84,8 @@ impl TdxVm {
             }
         }
 
-        let mut cmd = Cmd::from(&InitVm::new(&cpuid_entries));
+        let vm = InitVm::new(&cpuid_entries);
+        let mut cmd = Cmd::from(&vm);
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
