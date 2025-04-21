@@ -17,15 +17,10 @@ pub struct TdxVm {}
 impl TdxVm {
     /// Create a new TDX VM with KVM
     pub fn new(vm_fd: &VmFd, max_vcpus: u64) -> Result<Self, TdxError> {
-        // TDX requires that MAX_VCPUS and SPLIT_IRQCHIP be set
         let mut cap: kvm_enable_cap = kvm_enable_cap {
-            cap: KVM_CAP_MAX_VCPUS,
+            cap: kvm_bindings::KVM_CAP_X2APIC_API,
             ..Default::default()
         };
-        cap.args[0] = max_vcpus;
-        vm_fd.enable_cap(&cap).unwrap();
-
-        cap.cap = kvm_bindings::KVM_CAP_X2APIC_API;
         cap.args[0] = (1 << 0) | (1 << 1);
         vm_fd.enable_cap(&cap).unwrap();
 
