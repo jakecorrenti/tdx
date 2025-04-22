@@ -45,7 +45,9 @@ fn launch() {
 
     // create vcpu
     let mut vcpufd = vm_fd.create_vcpu(10).unwrap();
-    let mut cpuid = kvm_fd.get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES).unwrap();
+    let mut cpuid = kvm_fd
+        .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
+        .unwrap();
     // set the X2APIC bit for CPUID[0x1] so the kernel can call KVM_SET_MSRS without failing
     for entry in cpuid.as_mut_slice().iter_mut() {
         if entry.index == 0x1 {

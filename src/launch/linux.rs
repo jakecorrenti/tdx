@@ -33,9 +33,6 @@ pub struct Cmd<'a, T: 'a> {
     /// code in addition to -Exxx.
     pub error: u64,
 
-    /// Reserved.
-    pub _unused: u64,
-
     _phantom: PhantomData<&'a T>,
 }
 
@@ -46,7 +43,6 @@ impl<'a, T: 'a> Cmd<'a, T> {
             flags: 0,
             data: data as *const T as _,
             error: 0,
-            _unused: 0,
             _phantom: PhantomData,
         }
     }
@@ -83,100 +79,100 @@ impl From<i32> for TdxError {
     }
 }
 
-/// CPUID_CONFIG is designed to enumerate how the host VMM may configure the
-/// virtualization done by the Intel TDX module for a single CPUID leaf and
-/// sub-leaf. This is equivalent to `struct kvm_tdx_cpuid_config` in the kernel.
-#[derive(Debug, Default, Clone, Copy)]
-#[repr(C)]
-pub struct CpuidConfig {
-    /// EAX input value to CPUID
-    pub leaf: u32,
+// /// CPUID_CONFIG is designed to enumerate how the host VMM may configure the
+// /// virtualization done by the Intel TDX module for a single CPUID leaf and
+// /// sub-leaf. This is equivalent to `struct kvm_tdx_cpuid_config` in the kernel.
+// #[derive(Debug, Default, Clone, Copy)]
+// #[repr(C)]
+// pub struct CpuidConfig {
+//     /// EAX input value to CPUID
+//     pub leaf: u32,
 
-    /// ECX input value to CPUID. A value of -1 indicates a CPUID leaf with
-    /// no sub-leaves.
-    pub sub_leaf: u32,
+//     /// ECX input value to CPUID. A value of -1 indicates a CPUID leaf with
+//     /// no sub-leaves.
+//     pub sub_leaf: u32,
 
-    /// CPUID configuration information for the EAX register.
-    pub eax: u32,
+//     /// CPUID configuration information for the EAX register.
+//     pub eax: u32,
 
-    /// CPUID configuration information for the EBX register.
-    pub ebx: u32,
+//     /// CPUID configuration information for the EBX register.
+//     pub ebx: u32,
 
-    /// CPUID configuration information for the ECX register.
-    pub ecx: u32,
+//     /// CPUID configuration information for the ECX register.
+//     pub ecx: u32,
 
-    /// CPUID configuration information for the EDX register.
-    pub edx: u32,
-}
+//     /// CPUID configuration information for the EDX register.
+//     pub edx: u32,
+// }
 
-/// Provides information about the Intel TDX module. This is equivalent to
-/// `struct kvm_tdx_capabilities` in the kernel.
-#[derive(Debug)]
-#[repr(C)]
-pub struct Capabilities {
-    /// Bitmap where if any certain bit is 0, it must be 0 in any TD's
-    /// ATTRIBUTES, which specifies various guest TD attributes. The value of
-    /// this field reflects the Intel TDX module capabilities and configuration
-    /// and CPU capabilities.
-    pub attrs_fixed0: u64,
+// /// Provides information about the Intel TDX module. This is equivalent to
+// /// `struct kvm_tdx_capabilities` in the kernel.
+// #[derive(Debug)]
+// #[repr(C)]
+// pub struct Capabilities {
+//     /// Bitmap where if any certain bit is 0, it must be 0 in any TD's
+//     /// ATTRIBUTES, which specifies various guest TD attributes. The value of
+//     /// this field reflects the Intel TDX module capabilities and configuration
+//     /// and CPU capabilities.
+//     pub attrs_fixed0: u64,
 
-    /// Bitmap where if any certain bit is 1, it must be 1 in any TD's
-    /// ATTRIBUTES, which specifies various guest TD attributes. The value of
-    /// this field reflects the Intel TDX module capabilities and configuration
-    /// and CPU capabilities.
-    pub attrs_fixed1: u64,
+//     /// Bitmap where if any certain bit is 1, it must be 1 in any TD's
+//     /// ATTRIBUTES, which specifies various guest TD attributes. The value of
+//     /// this field reflects the Intel TDX module capabilities and configuration
+//     /// and CPU capabilities.
+//     pub attrs_fixed1: u64,
 
-    /// Bitmap where if any certain bit is 0, it must be 0 in any TD's XFAM.
-    /// XFAM (eXtended Features Available Mask) determines the set of extended
-    /// features available for use by the guest TD.
-    pub xfam_fixed0: u64,
+//     /// Bitmap where if any certain bit is 0, it must be 0 in any TD's XFAM.
+//     /// XFAM (eXtended Features Available Mask) determines the set of extended
+//     /// features available for use by the guest TD.
+//     pub xfam_fixed0: u64,
 
-    /// Bitmap where if any certain bit is 1, it must be 1 in any TD's XFAM.
-    /// XFAM (eXtended Features Available Mask) determines the set of extended
-    /// features available for use by the guest TD.
-    pub xfam_fixed1: u64,
+//     /// Bitmap where if any certain bit is 1, it must be 1 in any TD's XFAM.
+//     /// XFAM (eXtended Features Available Mask) determines the set of extended
+//     /// features available for use by the guest TD.
+//     pub xfam_fixed1: u64,
 
-    /// Supported Guest Physical Address Width
-    pub supported_gpaw: u32,
+//     /// Supported Guest Physical Address Width
+//     pub supported_gpaw: u32,
 
-    /// Padding space. Ignored
-    _padding: u32,
+//     /// Padding space. Ignored
+//     _padding: u32,
 
-    /// Reserved space. Ignored.
-    _reserved: [u64; 251],
+//     /// Reserved space. Ignored.
+//     _reserved: [u64; 251],
 
-    /// Number of CPUID_CONFIG entries
-    pub nr_cpuid_configs: u32,
+//     /// Number of CPUID_CONFIG entries
+//     pub nr_cpuid_configs: u32,
 
-    /// Enumeration of the CPUID leaves/sub-leaves that contain bit fields whose
-    /// virtualization by the Intel TDX module is either:
-    ///
-    /// - Directly configurable (CONFIG_DIRECT) by the host VMM
-    /// - Bits that the host VMM may allow to be 1 (ALLOW_DIRECT) and their
-    ///   native value, as returned by the CPU, is 1
-    ///
-    /// Note that the virtualization of many CPUID bit fields not enumerated in
-    /// this list is configurable indirectly via the XFAM and ATTRIBUTES assigned
-    /// to a TD by the host VMM.
-    pub cpuid_configs: [CpuidConfig; NR_CPUID_CONFIGS],
-}
+//     /// Enumeration of the CPUID leaves/sub-leaves that contain bit fields whose
+//     /// virtualization by the Intel TDX module is either:
+//     ///
+//     /// - Directly configurable (CONFIG_DIRECT) by the host VMM
+//     /// - Bits that the host VMM may allow to be 1 (ALLOW_DIRECT) and their
+//     ///   native value, as returned by the CPU, is 1
+//     ///
+//     /// Note that the virtualization of many CPUID bit fields not enumerated in
+//     /// this list is configurable indirectly via the XFAM and ATTRIBUTES assigned
+//     /// to a TD by the host VMM.
+//     pub cpuid_configs: [CpuidConfig; NR_CPUID_CONFIGS],
+// }
 
-impl Default for Capabilities {
-    fn default() -> Self {
-        Self {
-            attrs_fixed0: 0,
-            attrs_fixed1: 0,
-            xfam_fixed0: 0,
-            xfam_fixed1: 0,
-            supported_gpaw: 0,
-            _padding: 0,
-            _reserved: [0; 251],
+// impl Default for Capabilities {
+//     fn default() -> Self {
+//         Self {
+//             attrs_fixed0: 0,
+//             attrs_fixed1: 0,
+//             xfam_fixed0: 0,
+//             xfam_fixed1: 0,
+//             supported_gpaw: 0,
+//             _padding: 0,
+//             _reserved: [0; 251],
 
-            nr_cpuid_configs: NR_CPUID_CONFIGS as u32,
-            cpuid_configs: [Default::default(); NR_CPUID_CONFIGS],
-        }
-    }
-}
+//             nr_cpuid_configs: NR_CPUID_CONFIGS as u32,
+//             cpuid_configs: [Default::default(); NR_CPUID_CONFIGS],
+//         }
+//     }
+// }
 
 /// TDX specific VM initialization information
 #[derive(Debug)]
@@ -246,3 +242,35 @@ pub struct TdxInitMemRegion {
     /// Number of pages to be mapped
     pub nr_pages: u64,
 }
+
+pub type __s8 = ::std::os::raw::c_schar;
+pub type __u8 = ::std::os::raw::c_uchar;
+pub type __s16 = ::std::os::raw::c_short;
+pub type __u16 = ::std::os::raw::c_ushort;
+pub type __s32 = ::std::os::raw::c_int;
+pub type __u32 = ::std::os::raw::c_uint;
+pub type __s64 = ::std::os::raw::c_longlong;
+pub type __u64 = ::std::os::raw::c_ulonglong;
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct kvm_tdx_capabilities {
+    pub supported_attrs: __u64,
+    pub supported_xfam: __u64,
+    pub reserved: [__u64; 254usize],
+    pub cpuid: kvm_bindings::kvm_cpuid2,
+}
+
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of kvm_tdx_capabilities"][::std::mem::size_of::<kvm_tdx_capabilities>() - 2056usize];
+    ["Alignment of kvm_tdx_capabilities"][::std::mem::align_of::<kvm_tdx_capabilities>() - 8usize];
+    ["Offset of field: kvm_tdx_capabilities::supported_attrs"]
+        [::std::mem::offset_of!(kvm_tdx_capabilities, supported_attrs) - 0usize];
+    ["Offset of field: kvm_tdx_capabilities::supported_xfam"]
+        [::std::mem::offset_of!(kvm_tdx_capabilities, supported_xfam) - 8usize];
+    ["Offset of field: kvm_tdx_capabilities::reserved"]
+        [::std::mem::offset_of!(kvm_tdx_capabilities, reserved) - 16usize];
+    ["Offset of field: kvm_tdx_capabilities::cpuid"]
+        [::std::mem::offset_of!(kvm_tdx_capabilities, cpuid) - 2048usize];
+};

@@ -3,13 +3,43 @@
 mod linux;
 
 use kvm_bindings::{kvm_enable_cap, KVM_CAP_MAX_VCPUS};
-use linux::{Capabilities, Cmd, CmdId, CpuidConfig, InitVm, TdxError};
+use linux::{/*Capabilities,*/ Cmd, CmdId, /*CpuidConfig,*/ InitVm, TdxError, NR_CPUID_CONFIGS,};
 
 use bitflags::bitflags;
 use kvm_ioctls::VmFd;
 
 // Defined in linux/arch/x86/include/uapi/asm/kvm.h
 pub const KVM_X86_TDX_VM: u64 = 5;
+
+// Returns a `Vec<T>` with a size in bytes at least as large as `size_in_bytes`.
+fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
+    let rounded_size = size_in_bytes.div_ceil(size_of::<T>());
+    let mut v = Vec::with_capacity(rounded_size);
+    v.resize_with(rounded_size, T::default);
+    v
+}
+
+// The kvm API has many structs that resemble the following `Foo` structure:
+//
+// ```
+// #[repr(C)]
+// struct Foo {
+//    some_data: u32
+//    entries: __IncompleteArrayField<__u32>,
+// }
+// ```
+//
+// In order to allocate such a structure, `size_of::<Foo>()` would be too small because it would not
+// include any space for `entries`. To make the allocation large enough while still being aligned
+// for `Foo`, a `Vec<Foo>` is created. Only the first element of `Vec<Foo>` would actually be used
+// as a `Foo`. The remaining memory in the `Vec<Foo>` is for `entries`, which must be contiguous
+// with `Foo`. This function is used to make the `Vec<Foo>` with enough space for `count` entries.
+use std::{borrow::Borrow, mem::size_of};
+pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
+    let element_space = count * size_of::<F>();
+    let vec_size_bytes = size_of::<T>() + element_space;
+    vec_with_size_in_bytes(vec_size_bytes)
+}
 
 /// Handle to the TDX VM file descriptor
 pub struct TdxVm {}
@@ -29,24 +59,47 @@ impl TdxVm {
 
     /// Retrieve information about the Intel TDX module
     pub fn get_capabilities(&self, fd: &VmFd) -> Result<TdxCapabilities, TdxError> {
-        let caps = Capabilities::default();
-        let mut cmd: Cmd<Capabilities> = Cmd::from(CmdId::GetCapabilities, &caps);
+        let mut caps = linux::kvm_tdx_capabilities {
+            supported_attrs: 0,
+            supported_xfam: 0,
+            reserved: [0; 254],
+            cpuid: kvm_bindings::kvm_cpuid2::default(),
+        };
+
+        let mut defaults = Vec::with_capacity(NR_CPUID_CONFIGS);
+        (0..NR_CPUID_CONFIGS)
+            .for_each(|_| defaults.push(kvm_bindings::kvm_cpuid_entry2::default()));
+        let mut cpuid_entries = vec_with_array_field::<
+            kvm_bindings::kvm_cpuid2,
+            kvm_bindings::kvm_cpuid_entry2,
+        >(NR_CPUID_CONFIGS);
+        cpuid_entries[0].nent = NR_CPUID_CONFIGS as u32;
+        cpuid_entries[0].padding = 0;
+        unsafe {
+            let cpuid_entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] =
+                cpuid_entries[0].entries.as_mut_slice(NR_CPUID_CONFIGS);
+            cpuid_entries_slice.copy_from_slice(defaults.as_slice());
+        }
+        unsafe {
+            std::ptr::copy(
+                cpuid_entries[0].entries.as_ptr(),
+                caps.cpuid.entries.as_mut_ptr(),
+                NR_CPUID_CONFIGS,
+            );
+        }
+        caps.cpuid.nent = NR_CPUID_CONFIGS as u32;
+        caps.cpuid.padding = 0;
+
+        let mut cmd: Cmd<linux::kvm_tdx_capabilities> = Cmd::from(CmdId::GetCapabilities, &caps);
 
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
 
         Ok(TdxCapabilities {
-            attributes: Attributes {
-                fixed0: AttributesFlags::from_bits_truncate(caps.attrs_fixed0),
-                fixed1: AttributesFlags::from_bits_truncate(caps.attrs_fixed1),
-            },
-            xfam: Xfam {
-                fixed0: XFAMFlags::from_bits_truncate(caps.xfam_fixed0),
-                fixed1: XFAMFlags::from_bits_truncate(caps.xfam_fixed1),
-            },
-            supported_gpaw: caps.supported_gpaw,
-            cpuid_configs: Vec::from(caps.cpuid_configs),
+            attributes: AttributesFlags::from_bits_truncate(caps.supported_attrs),
+            xfam: XFAMFlags::from_bits_truncate(caps.supported_xfam),
+            cpuid_configs: unsafe { caps.cpuid.entries.as_slice(NR_CPUID_CONFIGS).to_vec() },
         })
     }
 
@@ -246,13 +299,9 @@ pub struct Xfam {
 /// Provides information about the Intel TDX module
 #[derive(Debug)]
 pub struct TdxCapabilities {
-    pub attributes: Attributes,
-    pub xfam: Xfam,
-
-    /// supported Guest Physical Address Width
-    pub supported_gpaw: u32,
-
-    pub cpuid_configs: Vec<CpuidConfig>,
+    pub attributes: AttributesFlags,
+    pub xfam: XFAMFlags,
+    pub cpuid_configs: Vec<kvm_bindings::kvm_cpuid_entry2>,
 }
 
 /// Manually create the wrapper for KVM_MEMORY_ENCRYPT_OP since `kvm_ioctls` doesn't
