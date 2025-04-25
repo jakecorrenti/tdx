@@ -180,6 +180,7 @@ impl From<i32> for TdxError {
 pub struct InitVm {
     /// Guest TD attributes
     pub attributes: u64,
+    pub xfam: u64,
 
     /// Software-defined ID for non-owner-defined configuration of the guest TD
     /// (runtime or OS configuration)
@@ -193,7 +194,7 @@ pub struct InitVm {
     pub mrownerconfig: [u64; 6],
 
     /// reserved for future extensibility
-    reserved: [u64; 1004],
+    reserved: [u64; 12],
 
     /// direct configuration of CPUID leaves/subleaves virtualization
     pub cpuid_nent: u32,
@@ -219,10 +220,11 @@ impl Default for InitVm {
             // Set the SEPT_VE_DISABLE bit by default to prevent an Extended Page Table
             // (EPT) violation to #VE caused by guest TD access of PENDING pages
             attributes: super::AttributesFlags::SEPT_VE_DISABLE.bits(),
+            xfam: 393959,
             mrconfigid: [0; 6],
             mrowner: [0; 6],
             mrownerconfig: [0; 6],
-            reserved: [0; 1004],
+            reserved: [0; 12],
             cpuid_nent: 0,
             _padding: 0,
             cpuid_entries: [Default::default(); 256],
@@ -273,4 +275,35 @@ const _: () = {
         [::std::mem::offset_of!(kvm_tdx_capabilities, reserved) - 16usize];
     ["Offset of field: kvm_tdx_capabilities::cpuid"]
         [::std::mem::offset_of!(kvm_tdx_capabilities, cpuid) - 2048usize];
+};
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct kvm_tdx_init_vm {
+    pub attributes: __u64,
+    pub xfam: __u64,
+    pub mrconfigid: [__u64; 6usize],
+    pub mrowner: [__u64; 6usize],
+    pub mrownerconfig: [__u64; 6usize],
+    pub reserved: [__u64; 12usize],
+    pub cpuid: kvm_bindings::kvm_cpuid2,
+}
+#[allow(clippy::unnecessary_operation, clippy::identity_op)]
+const _: () = {
+    ["Size of kvm_tdx_init_vm"][::std::mem::size_of::<kvm_tdx_init_vm>() - 264usize];
+    ["Alignment of kvm_tdx_init_vm"][::std::mem::align_of::<kvm_tdx_init_vm>() - 8usize];
+    ["Offset of field: kvm_tdx_init_vm::attributes"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, attributes) - 0usize];
+    ["Offset of field: kvm_tdx_init_vm::xfam"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, xfam) - 8usize];
+    ["Offset of field: kvm_tdx_init_vm::mrconfigid"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, mrconfigid) - 16usize];
+    ["Offset of field: kvm_tdx_init_vm::mrowner"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, mrowner) - 64usize];
+    ["Offset of field: kvm_tdx_init_vm::mrownerconfig"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, mrownerconfig) - 112usize];
+    ["Offset of field: kvm_tdx_init_vm::reserved"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, reserved) - 160usize];
+    ["Offset of field: kvm_tdx_init_vm::cpuid"]
+        [::std::mem::offset_of!(kvm_tdx_init_vm, cpuid) - 256usize];
 };

@@ -3,7 +3,9 @@
 mod linux;
 
 use kvm_bindings::{kvm_enable_cap, KVM_CAP_MAX_VCPUS};
-use linux::{/*Capabilities,*/ Cmd, CmdId, /*CpuidConfig,*/ InitVm, TdxError, NR_CPUID_CONFIGS,};
+use linux::{
+    /*Capabilities,*/ kvm_tdx_capabilities, Cmd, CmdId, InitVm, TdxError, NR_CPUID_CONFIGS,
+};
 
 use bitflags::bitflags;
 use kvm_ioctls::VmFd;
@@ -16,6 +18,33 @@ fn vec_with_size_in_bytes<T: Default>(size_in_bytes: usize) -> Vec<T> {
     let rounded_size = size_in_bytes.div_ceil(size_of::<T>());
     let mut v = Vec::with_capacity(rounded_size);
     v.resize_with(rounded_size, T::default);
+    v
+}
+
+fn vec_with_size_in_bytes_caps(size_in_bytes: usize) -> Vec<linux::kvm_tdx_capabilities> {
+    let rounded_size = size_in_bytes.div_ceil(size_of::<linux::kvm_tdx_capabilities>());
+    let mut v = Vec::with_capacity(rounded_size);
+    v.resize_with(rounded_size, || linux::kvm_tdx_capabilities {
+        supported_attrs: 0,
+        supported_xfam: 0,
+        reserved: [0; 254],
+        cpuid: kvm_bindings::kvm_cpuid2::default(),
+    });
+    v
+}
+
+fn vec_with_size_in_bytes_init_vm(size_in_bytes: usize) -> Vec<linux::kvm_tdx_init_vm> {
+    let rounded_size = size_in_bytes.div_ceil(size_of::<linux::kvm_tdx_init_vm>());
+    let mut v = Vec::with_capacity(rounded_size);
+    v.resize_with(rounded_size, || linux::kvm_tdx_init_vm {
+        attributes: 0,
+        xfam: 0,
+        mrconfigid: [0; 6],
+        mrowner: [0; 6],
+        mrownerconfig: [0; 6],
+        reserved: [0; 12],
+        cpuid: kvm_bindings::kvm_cpuid2::default(),
+    });
     v
 }
 
@@ -39,6 +68,17 @@ pub fn vec_with_array_field<T: Default, F>(count: usize) -> Vec<T> {
     let element_space = count * size_of::<F>();
     let vec_size_bytes = size_of::<T>() + element_space;
     vec_with_size_in_bytes(vec_size_bytes)
+}
+pub fn vec_with_array_field_caps(count: usize) -> Vec<linux::kvm_tdx_capabilities> {
+    let element_space = count * size_of::<kvm_bindings::kvm_cpuid_entry2>();
+    let vec_size_bytes = size_of::<kvm_tdx_capabilities>() + element_space;
+    vec_with_size_in_bytes_caps(vec_size_bytes)
+}
+
+pub fn vec_with_array_field_init_vm(count: usize) -> Vec<linux::kvm_tdx_init_vm> {
+    let element_space = count * size_of::<kvm_bindings::kvm_cpuid_entry2>();
+    let vec_size_bytes = size_of::<linux::kvm_tdx_init_vm>() + element_space;
+    vec_with_size_in_bytes_init_vm(vec_size_bytes)
 }
 
 /// Handle to the TDX VM file descriptor
@@ -69,53 +109,74 @@ impl TdxVm {
         let mut defaults = Vec::with_capacity(NR_CPUID_CONFIGS);
         (0..NR_CPUID_CONFIGS)
             .for_each(|_| defaults.push(kvm_bindings::kvm_cpuid_entry2::default()));
-        let mut cpuid_entries = vec_with_array_field::<
-            kvm_bindings::kvm_cpuid2,
-            kvm_bindings::kvm_cpuid_entry2,
-        >(NR_CPUID_CONFIGS);
-        cpuid_entries[0].nent = NR_CPUID_CONFIGS as u32;
-        cpuid_entries[0].padding = 0;
+        let mut cpuid_entries = vec_with_array_field_caps(NR_CPUID_CONFIGS);
+        cpuid_entries[0].cpuid.nent = NR_CPUID_CONFIGS as u32;
+        cpuid_entries[0].cpuid.padding = 0;
         unsafe {
-            let cpuid_entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] =
-                cpuid_entries[0].entries.as_mut_slice(NR_CPUID_CONFIGS);
+            let cpuid_entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] = cpuid_entries[0]
+                .cpuid
+                .entries
+                .as_mut_slice(NR_CPUID_CONFIGS);
             cpuid_entries_slice.copy_from_slice(defaults.as_slice());
-        }
-        unsafe {
-            std::ptr::copy(
-                cpuid_entries[0].entries.as_ptr(),
-                caps.cpuid.entries.as_mut_ptr(),
-                NR_CPUID_CONFIGS,
-            );
         }
         caps.cpuid.nent = NR_CPUID_CONFIGS as u32;
         caps.cpuid.padding = 0;
-
-        let mut cmd: Cmd<linux::kvm_tdx_capabilities> = Cmd::from(CmdId::GetCapabilities, &caps);
+        let mut cmd: Cmd<linux::kvm_tdx_capabilities> =
+            Cmd::from(CmdId::GetCapabilities, &cpuid_entries[0]);
 
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
 
+        unsafe {
+            println!(
+                "entries after caps: {:#?}",
+                cpuid_entries[0].cpuid.entries.as_mut_slice(24)
+            );
+        }
+
         Ok(TdxCapabilities {
-            attributes: AttributesFlags::from_bits_truncate(caps.supported_attrs),
-            xfam: XFAMFlags::from_bits_truncate(caps.supported_xfam),
-            cpuid_configs: unsafe { caps.cpuid.entries.as_slice(NR_CPUID_CONFIGS).to_vec() },
+            attributes: AttributesFlags::from_bits_truncate(cpuid_entries[0].supported_attrs),
+            xfam: XFAMFlags::from_bits_truncate(cpuid_entries[0].supported_xfam),
+            cpuid_configs: unsafe {
+                cpuid_entries[0]
+                    .cpuid
+                    .entries
+                    .as_slice(cpuid_entries[0].cpuid.nent as usize)
+                    .to_vec()
+            },
         })
     }
 
     /// Do additional VM initialization that is specific to Intel TDX
-    pub fn init_vm(&self, fd: &VmFd, cpuid: kvm_bindings::CpuId) -> Result<(), TdxError> {
-        let mut cpuid_entries: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+    pub fn init_vm(
+        &self,
+        fd: &VmFd,
+        caps: &TdxCapabilities,
+        cpuid: kvm_bindings::CpuId,
+    ) -> Result<(), TdxError> {
+        let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
+        // resize to 256 entries to make sure that kvm_tdx_init_vm is 8KB
+        defaults.resize(256, kvm_bindings::kvm_cpuid_entry2::default());
+        let cpuids_len = caps.cpuid_configs.len();
 
-        // resize to 256 entries to make sure that InitVm is 8KB
-        cpuid_entries.resize(256, kvm_bindings::kvm_cpuid_entry2::default());
+        // here, qemu will allocate the space for 256 cpuid entries, but it won't actually create that many entries at the start...
 
-        let init_vm = InitVm::new(&cpuid_entries);
-        let mut cmd: Cmd<InitVm> = Cmd::from(CmdId::InitVm, &init_vm);
+        let mut cpuid_entries = vec_with_array_field_init_vm(cpuids_len);
+        cpuid_entries[0].cpuid.nent = cpuids_len as u32;
+        cpuid_entries[0].cpuid.padding = 0;
+        cpuid_entries[0].attributes = caps.attributes.bits();
+        cpuid_entries[0].xfam = caps.xfam.bits();
+        unsafe {
+            let cpuid_entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] =
+                cpuid_entries[0].cpuid.entries.as_mut_slice(cpuids_len);
+            cpuid_entries_slice.copy_from_slice(&caps.cpuid_configs.as_slice());
+        }
+
+        let mut cmd: Cmd<linux::kvm_tdx_init_vm> = Cmd::from(CmdId::InitVm, &cpuid_entries[0]);
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
-
         Ok(())
     }
 
