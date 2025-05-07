@@ -128,13 +128,6 @@ impl TdxVm {
             fd.encrypt_op(&mut cmd)?;
         }
 
-        unsafe {
-            println!(
-                "entries after caps: {:#?}",
-                cpuid_entries[0].cpuid.entries.as_mut_slice(24)
-            );
-        }
-
         Ok(TdxCapabilities {
             attributes: AttributesFlags::from_bits_truncate(cpuid_entries[0].supported_attrs),
             xfam: XFAMFlags::from_bits_truncate(cpuid_entries[0].supported_xfam),
@@ -155,29 +148,95 @@ impl TdxVm {
         caps: &TdxCapabilities,
         cpuid: kvm_bindings::CpuId,
     ) -> Result<(), TdxError> {
-        let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
-        // resize to 256 entries to make sure that kvm_tdx_init_vm is 8KB
-        defaults.resize(256, kvm_bindings::kvm_cpuid_entry2::default());
-        let cpuids_len = caps.cpuid_configs.len();
+        let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = caps.cpuid_configs.clone();
+        defaults.resize(
+            kvm_bindings::KVM_MAX_CPUID_ENTRIES,
+            kvm_bindings::kvm_cpuid_entry2::default(),
+        );
 
-        // here, qemu will allocate the space for 256 cpuid entries, but it won't actually create that many entries at the start...
-
-        let mut cpuid_entries = vec_with_array_field_init_vm(cpuids_len);
-        cpuid_entries[0].cpuid.nent = cpuids_len as u32;
-        cpuid_entries[0].cpuid.padding = 0;
-        cpuid_entries[0].attributes = caps.attributes.bits();
-        cpuid_entries[0].xfam = caps.xfam.bits();
+        let mut entries = vec_with_array_field_init_vm(kvm_bindings::KVM_MAX_CPUID_ENTRIES);
+        entries[0].cpuid.nent = caps.cpuid_configs.len() as u32;
+        entries[0].cpuid.padding = 0;
+        entries[0].attributes = caps.attributes.bits();
+        entries[0].xfam = caps.xfam.bits();
         unsafe {
-            let cpuid_entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] =
-                cpuid_entries[0].cpuid.entries.as_mut_slice(cpuids_len);
-            cpuid_entries_slice.copy_from_slice(&caps.cpuid_configs.as_slice());
+            let entries_slice: &mut [kvm_bindings::kvm_cpuid_entry2] = entries[0]
+                .cpuid
+                .entries
+                .as_mut_slice(kvm_bindings::KVM_MAX_CPUID_ENTRIES);
+            entries_slice.copy_from_slice(defaults.as_slice());
         }
 
-        let mut cmd: Cmd<linux::kvm_tdx_init_vm> = Cmd::from(CmdId::InitVm, &cpuid_entries[0]);
+        Self::tdx_filter_cpuid(&cpuid.as_slice().to_vec(), &mut entries[0].cpuid);
+
+        unsafe {
+            println!(
+                "{:#?} {:#?}",
+                entries[0]
+                    .cpuid
+                    .entries
+                    .as_slice(entries[0].cpuid.nent as usize),
+                entries[0].cpuid.nent,
+            )
+        };
+
+        let mut cmd: Cmd<linux::kvm_tdx_init_vm> = Cmd::from(CmdId::InitVm, &entries[0]);
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
+
+        // NOTE: looks like in QEMU there's tdx_filter_cpuid which looks
+        // suspiciously like it's trying to get around the copies check in the
+        // kernel. might be something to look into implementing here
+
         Ok(())
+    }
+
+    // filter TDX CPUID
+    // ================
+    // using the cpuid from init_vm, check to see if the cpuid entries reported by CAPS will have that entry
+    fn tdx_filter_cpuid(
+        caps_cpuid_entries: &Vec<kvm_bindings::kvm_cpuid_entry2>,
+        initvm_cpuid: &mut kvm_bindings::kvm_cpuid2,
+    ) {
+        let mut dest_cnt = 0;
+
+        for entry in unsafe { initvm_cpuid.entries.as_slice(initvm_cpuid.nent as usize) } {
+            let src = entry;
+            let conf = Self::cpuid_find_entry(&caps_cpuid_entries, src.function, src.index);
+            if conf.is_none() {
+                println!("missing function {} and index {}", src.function, src.index);
+                continue;
+            }
+            let conf = conf.unwrap();
+
+            let mut dest =
+                unsafe { initvm_cpuid.entries.as_slice(initvm_cpuid.nent as usize)[dest_cnt] };
+            dest.function = src.function;
+            dest.index = src.index;
+            dest.flags = src.flags;
+            dest.eax = src.eax & conf.eax;
+            dest.ebx = src.ebx & conf.ebx;
+            dest.ecx = src.ecx & conf.ecx;
+            dest.edx = src.edx & conf.edx;
+
+            dest_cnt += 1;
+        }
+        initvm_cpuid.nent = (dest_cnt + 1) as u32;
+        println!("dest count after filter: {}", dest_cnt);
+    }
+
+    fn cpuid_find_entry(
+        entries: &Vec<kvm_bindings::kvm_cpuid_entry2>,
+        function: u32,
+        index: u32,
+    ) -> Option<kvm_bindings::kvm_cpuid_entry2> {
+        for entry in entries {
+            if entry.function == function && entry.index == index {
+                return Some(*entry);
+            }
+        }
+        None
     }
 
     /// Encrypt a memory continuous region
