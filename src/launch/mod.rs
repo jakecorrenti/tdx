@@ -148,14 +148,16 @@ impl TdxVm {
         caps: &TdxCapabilities,
         cpuid: kvm_bindings::CpuId,
     ) -> Result<(), TdxError> {
-        let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = caps.cpuid_configs.clone();
+        // let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = caps.cpuid_configs.clone();
+        let mut defaults: Vec<kvm_bindings::kvm_cpuid_entry2> = cpuid.as_slice().to_vec();
         defaults.resize(
             kvm_bindings::KVM_MAX_CPUID_ENTRIES,
             kvm_bindings::kvm_cpuid_entry2::default(),
         );
 
         let mut entries = vec_with_array_field_init_vm(kvm_bindings::KVM_MAX_CPUID_ENTRIES);
-        entries[0].cpuid.nent = caps.cpuid_configs.len() as u32;
+        // entries[0].cpuid.nent = caps.cpuid_configs.len() as u32;
+        entries[0].cpuid.nent = defaults.len() as u32;
         entries[0].cpuid.padding = 0;
         entries[0].attributes = caps.attributes.bits();
         entries[0].xfam = caps.xfam.bits();
@@ -167,27 +169,169 @@ impl TdxVm {
             entries_slice.copy_from_slice(defaults.as_slice());
         }
 
-        Self::tdx_filter_cpuid(&cpuid.as_slice().to_vec(), &mut entries[0].cpuid);
+        // NOTE: at this point we now have a kmv_cpuid2 that has the right memory allocated
 
-        unsafe {
-            println!(
-                "{:#?} {:#?}",
-                entries[0]
-                    .cpuid
-                    .entries
-                    .as_slice(entries[0].cpuid.nent as usize),
-                entries[0].cpuid.nent,
-            )
-        };
+        // Self::tdx_filter_cpuid(&cpuid.as_slice().to_vec(), &mut entries[0].cpuid);
+        Self::tdx_filter_cpuid(&mut entries[0].cpuid, &caps.cpuid_configs);
+
+       // for entry in unsafe { entries[0].cpuid.entries.as_slice(entries[0].cpuid.nent as usize) } {
+       //     println!("{:#?}", entry);
+       // }
+
+        // unsafe {
+        //     println!(
+        //         "{:#?} {:#?}",
+        //         entries[0]
+        //             .cpuid
+        //             .entries
+        //             .as_slice(entries[0].cpuid.nent as usize)
+        //             == caps.cpuid_configs.as_slice(),
+        //         entries[0].cpuid.nent,
+        //     )
+        // };
+
+        // let qemu = vec![
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 1,
+        //         index: 0,
+        //         eax: 788210,
+        //         ebx: 0,
+        //         ecx: 822083584,
+        //         edx: 134217728,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 4,
+        //         index: 0,
+        //         eax: 289,
+        //         ebx: 29360128,
+        //         ecx: 63,
+        //         edx: 1,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 4,
+        //         index: 1,
+        //         eax: 290,
+        //         ebx: 29360128,
+        //         ecx: 63,
+        //         edx: 1,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 4,
+        //         index: 2,
+        //         eax: 323,
+        //         ebx: 62914560,
+        //         ecx: 4095,
+        //         edx: 1,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 4,
+        //         index: 3,
+        //         eax: 355,
+        //         ebx: 62914560,
+        //         ecx: 16383,
+        //         edx: 6,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 7,
+        //         index: 0,
+        //         eax: 0,
+        //         ebx: 3492479752,
+        //         ecx: 37838660,
+        //         edx: 81936,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 7,
+        //         index: 1,
+        //         eax: 7216,
+        //         ebx: 0,
+        //         ecx: 0,
+        //         edx: 0,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 31,
+        //         index: 0,
+        //         eax: 0,
+        //         ebx: 1,
+        //         ecx: 256,
+        //         edx: 0,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 31,
+        //         index: 1,
+        //         eax: 0,
+        //         ebx: 1,
+        //         ecx: 513,
+        //         edx: 0,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 31,
+        //         index: 2,
+        //         eax: 0,
+        //         ebx: 0,
+        //         ecx: 2,
+        //         edx: 0,
+        //     },
+        //     kvm_bindings::kvm_cpuid_entry2 {
+        //         flags: 0,
+        //         padding: [0; 3],
+        //         function: 0x8000_0008,
+        //         index: 0,
+        //         eax: 3407924,
+        //         ebx: 512,
+        //         ecx: 0,
+        //         edx: 0,
+        //     },
+        // ];
+
+        // let mut sl = unsafe { entries[0].cpuid.entries.as_mut_slice(18 as usize) };
+        // for entry in sl {
+        //     if entry.function == 0x8000_0008 {
+        //         let lower_mask = 0b11111111_11111111;
+        //         let lower = entry.eax & lower_mask;
+        //         let upper = 0b110100 << 16;
+        //         let full_upper = upper | lower;
+        //         entry.eax = full_upper;
+        //     }
+        // }
+
+        // // NOTE: this fixes the guest phys bits issue... but is there a way to programmatically do it instead???
+        // for entry in unsafe { entries[0].cpuid.entries.as_mut_slice(18) } {
+        //     if entry.function == 0x8000_0008 {
+        //         entry.eax |= (0x34 << 16);
+        //         break;
+        //     }
+        //     //     for e in &qemu {
+        //     //         if entry.function == e.function && entry.index == e.index {
+        //     //             *entry = *e;
+        //     //         }
+        //     //     }
+        //     //     println!("{:?}", entry);
+        // }
 
         let mut cmd: Cmd<linux::kvm_tdx_init_vm> = Cmd::from(CmdId::InitVm, &entries[0]);
         unsafe {
             fd.encrypt_op(&mut cmd)?;
         }
-
-        // NOTE: looks like in QEMU there's tdx_filter_cpuid which looks
-        // suspiciously like it's trying to get around the copies check in the
-        // kernel. might be something to look into implementing here
 
         Ok(())
     }
@@ -196,34 +340,37 @@ impl TdxVm {
     // ================
     // using the cpuid from init_vm, check to see if the cpuid entries reported by CAPS will have that entry
     fn tdx_filter_cpuid(
-        caps_cpuid_entries: &Vec<kvm_bindings::kvm_cpuid_entry2>,
-        initvm_cpuid: &mut kvm_bindings::kvm_cpuid2,
+        cpuids: &mut kvm_bindings::kvm_cpuid2,
+        caps: &Vec<kvm_bindings::kvm_cpuid_entry2>,
     ) {
-        let mut dest_cnt = 0;
+        let mut dest_cnt = 0u32;
 
-        for entry in unsafe { initvm_cpuid.entries.as_slice(initvm_cpuid.nent as usize) } {
-            let src = entry;
-            let conf = Self::cpuid_find_entry(&caps_cpuid_entries, src.function, src.index);
+        let mut found = Vec::new();
+        let mut entries = unsafe { cpuids.entries.as_mut_slice(cpuids.nent as usize) };
+        for entry in &*entries {
+            let conf = Self::cpuid_find_entry(caps, entry.function, entry.index);
             if conf.is_none() {
-                println!("missing function {} and index {}", src.function, src.index);
                 continue;
             }
             let conf = conf.unwrap();
 
-            let mut dest =
-                unsafe { initvm_cpuid.entries.as_slice(initvm_cpuid.nent as usize)[dest_cnt] };
-            dest.function = src.function;
-            dest.index = src.index;
-            dest.flags = src.flags;
-            dest.eax = src.eax & conf.eax;
-            dest.ebx = src.ebx & conf.ebx;
-            dest.ecx = src.ecx & conf.ecx;
-            dest.edx = src.edx & conf.edx;
+            let mut dest = kvm_bindings::kvm_cpuid_entry2::default();
+            dest.function = entry.function;
+            dest.index = entry.index;
+            dest.flags = entry.flags;
+            dest.eax = entry.eax & conf.eax;
+            dest.ebx = entry.ebx & conf.ebx;
+            dest.ecx = entry.ecx & conf.ecx;
+            dest.edx = entry.edx & conf.edx;
+            found.push(dest);
 
-            dest_cnt += 1;
         }
-        initvm_cpuid.nent = (dest_cnt + 1) as u32;
-        println!("dest count after filter: {}", dest_cnt);
+
+        for (i, entry) in found.iter().enumerate() {
+            entries[i] = *entry;
+        }
+        println!("found: {:#?} {}", found, found.len()); 
+        unsafe { cpuids.nent = found.len() as u32 };
     }
 
     fn cpuid_find_entry(

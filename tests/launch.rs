@@ -33,7 +33,6 @@ fn launch() {
 
     let tdx_vm = TdxVm::new(&vm_fd, 100).unwrap();
     let _caps = tdx_vm.get_capabilities(&vm_fd).unwrap();
-    println!("caps: {:?}", _caps);
     let cpuid = kvm_fd
         .get_supported_cpuid(kvm_bindings::KVM_MAX_CPUID_ENTRIES)
         .unwrap();
